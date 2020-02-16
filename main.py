@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import random
 import networkx as nx
+import urllib
+import matplotlib.pylab as plt
 
 API = "https://en.wikipedia.org/w/api.php"
 SES = requests.Session()
@@ -34,6 +36,8 @@ def getAirports(code):
             divider.extract()
         tableContent.find_all('tr')[0].extract()
         for row in tableContent.find_all('tr'):
+            if "<s>" in str(row):
+                row.extract()
             for i, element in enumerate(row.find_all('td')):
                 if i in [1,4,5]:
                     element.extract()
@@ -42,17 +46,18 @@ def getAirports(code):
                 elif i == 3:
                     for a in element.find_all('a'):
                         a.replaceWithChildren()
-        for row in tableContent.find_all('tr'):
+        for row in tableContent.find_all('tr')[:100]:
             elements = row.find_all('td')
             name = elements[1].find_all('a')[0]
-            G.add_node(name["href"])
-            G.nodes[name["href"]]["IATA"] = elements[0].contents[0]
-            G.nodes[name["href"]]["Name"] = name.contents[0]
-            G.nodes[name["href"]]["Location"] = "".join(str(item) for item in elements[2].contents)
+            node = urllib.parse.unquote(name["href"]).replace("/wiki/", "")
+            G.add_node(node)
+            G.nodes[node]["IATA"] = elements[0].contents[0]
+            G.nodes[node]["Name"] = name.contents[0]
+            G.nodes[node]["Location"] = "".join(str(item) for item in elements[2].contents)
 
         
 
-def getAirportInfo(airport, nodeName):
+def getAirportInfo(airport):
 
         airport = airport.replace(" ", "_")
         params = {
@@ -72,10 +77,14 @@ def getAirportInfo(airport, nodeName):
                 break
             else:
                 index = None
-        
-        if index == None:
+        try:
+            if index == None:
+                print("Error: Airport with no destinations!")
+                G.remove_node(airport)
+                return -1
+        except UnboundLocalError:
             print("Error: Airport with no destinations!")
-            G.remove_node(nodeName)
+            G.remove_node(airport)
             return -1
 
         params = {
@@ -93,29 +102,26 @@ def getAirportInfo(airport, nodeName):
         res = SES.get(url=API, params=params)
         data = res.json()
         try:
-            G.nodes[nodeName]["lon"] = data["query"]["pages"][list(data["query"]["pages"])[0]]["coordinates"][0]["lon"]
-            G.nodes[nodeName]["lat"] = data["query"]["pages"][list(data["query"]["pages"])[0]]["coordinates"][0]["lat"]
+            G.nodes[airport]["Position"] = (data["query"]["pages"][list(data["query"]["pages"])[0]]["coordinates"][0]["lon"], data["query"]["pages"][list(data["query"]["pages"])[0]]["coordinates"][0]["lat"])
         except KeyError:
-            G.nodes[nodeName]["lon"] = "assign manually!"
-            G.nodes[nodeName]["lat"] = "assign manually!"
+            G.nodes[airport]["Position"] = (180, 80)
         data = data["query"]["pages"][list(data["query"]["pages"])[0]]["revisions"][0]["*"]
-
         # Uses BeautifulSoup html parser to remove unneeded elements
         soup = BeautifulSoup(data, "html.parser")
-
+        soup.encode("utf-8")
         soup.find("div").replaceWithChildren()
         for h2 in soup.find_all("h2"):
             h2.extract()
         if "Cargo" in soup.find().contents[0]:
             print("Error: Airport with no destinations!")
-            G.remove_node(nodeName)
+            G.remove_node(airport)
             return -1
         table = soup.find("table")
         if table != None:
             table = table.find("tbody")
         else:
             print("Error: Airport with no destinations!")
-            G.remove_node(nodeName)
+            G.remove_node(airport)
             return -1
 
         for sup in table.find_all('sup'):
@@ -124,40 +130,45 @@ def getAirportInfo(airport, nodeName):
         for row in table.find_all('tr'):
             element = row.find_all('td')
             if element:
-                for a in element[1].find_all('a', href=True):
-                    route = tuple(sorted((fixTitle(a["href"]), "/wiki/" + airport)))
-                    G.add_edge(*route)
-                    if "Airlines" not in G.edges[route]:
-                        G.edges[route]["Airlines"] = list()
-                    G.edges[route]["Airlines"].append(element[0].find('a', href=True).contents[0])
+                try:
+                    for a in element[1].find_all('a', href=True):
+                        route = tuple(sorted((urllib.parse.unquote(a["href"]).replace("/wiki/", ""), airport)))
+                        G.add_edge(*route)
+                        if "Airlines" not in G.edges[route]:
+                            G.edges[route]["Airlines"] = list()
+                        if "</a>" in str(element[0]):
+                            G.edges[route]["Airlines"].append(element[0].find('a', href=True).contents[0])
+                        else:
+                            G.edges[route]["Airlines"].append(element[0].contents[0])
+                except IndexError:
+                    break
         
         return
-
-
-def fixTitle(title):
-    fixes = {
-        "_%E2%80%93_": "–",
-        "%C3%A9": "é",
-    }
-    
-    for fix in list(fixes):
-        title = title.replace(fix, fixes[fix])
-
-    return title
 
 
 def main():
     getAirports("A")
     for i, node in enumerate(list(G.nodes)):
-        if i < 87:
-            continue
-        print(i, G.nodes[node]["Name"])
-        getAirportInfo(G.nodes[node]["Name"], node)
-        if i == 100:
-            break
+        print(i, node)
+        getAirportInfo(node)
     print("----EDGES----")
     for edge in G.edges:
         print(edge)
+    for node in G.nodes:
+        print(node)
 
 if __name__ == '__main__':
     main()
+    
+    for node in G.nodes:
+        if "Position" in G.nodes[node]:
+            continue
+        else:
+            G.nodes[node]["Position"] = (180, 80)
+    pos = nx.get_node_attributes(G, 'Position')
+
+    nx.draw(G, pos=pos)
+    labels = nx.get_node_attributes(G, 'IATA')
+    nx.draw_networkx_labels(G, pos=pos, labels=labels)
+    nx.write_gml(G, "Graphs/a.gml")
+    plt.show()
