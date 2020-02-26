@@ -1,5 +1,6 @@
 import networkx as nx
 import requests
+import pprint
 
 G = nx.read_gml("Graphs/Full.gml")
 API = "https://en.wikipedia.org/w/api.php"
@@ -25,13 +26,21 @@ def getRedirects(pages):
                 synonymDict[data[page]["title"]].append(redirect["title"])
 
 
-def main():
+def getSynonyms(printProgress=False):
     pages = [node for node in G.nodes]
     lastcount = 0
-    for count in range(50, len(pages[:200]), 50):
+    for count in range(50, len(pages), 50):
         getRedirects(pages[lastcount:count])
+        if printProgress:
+            print("DONE " + str(count) + "/" + str(len(pages)))
         lastcount = count
-    print(synonymDict)
+    getRedirects(pages[lastcount: lastcount + (len(pages) % 50)])
+    if printProgress:
+        print("DONE " + str(len(pages)) + "/" + str(len(pages)))
+        pp = pprint.PrettyPrinter()
+        pp.pprint(synonymDict)
+
+    return synonymDict
 
 if __name__ == '__main__':
-    main()
+    getSynonyms(printProgress=True)

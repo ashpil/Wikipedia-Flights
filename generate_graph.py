@@ -12,6 +12,7 @@ SES = requests.Session()
 G = nx.Graph()
 
 
+# Code to parse IATA page tables and put those into graph as nodes with attributes
 def getAirports(code):
     params = {
         "action": "query",
@@ -62,6 +63,7 @@ def getAirports(code):
     print("Got " + code + " IATA codes")
 
 
+# Coords DMS -> DD
 def parseCoords(coords):
     coords = coords.split("|")
     newCoords = list()
@@ -82,9 +84,12 @@ def dms2dd(degs, mins, secs, dir):
     return dd
 
 
+# Gets info for given airport and populates its nodes attributes and edges
 def getAirportInfo(airport):
 
-    airport = airport.replace(" ", "_")
+    airport = airport.replace(" ", "_")\
+
+    # Get section of routes
     params = {
         "action": "parse",
         "prop": "sections",
@@ -95,6 +100,9 @@ def getAirportInfo(airport):
 
     res = SES.get(url=API, params=params)
     data = res.json()
+
+    # Basically this is tons of if statements to check for certain exceptions
+    # and do proper thing if they occur. There's likely a better way to do this
     for section in data["parse"]["sections"]:
         if section["anchor"] == "Airlines_and_destinations":
             index = section["index"]
@@ -111,6 +119,7 @@ def getAirportInfo(airport):
         G.remove_node(airport)
         return -1
 
+    # Get coordinates and routes
     params = {
         "action": "query",
         "prop": "revisions|coordinates",
@@ -137,6 +146,7 @@ def getAirportInfo(airport):
             print("Error! No coordinates for this page!")
     data = data["query"]["pages"][list(data["query"]["pages"])[
         0]]["revisions"][0]["*"]
+
     # Uses BeautifulSoup html parser to remove unneeded elements
     soup = BeautifulSoup(data, "html.parser")
     soup.encode("utf-8")
@@ -200,8 +210,12 @@ def getAirportInfo(airport):
 
 
 def main():
+
+    # Populate graph from IATA page
     for letter in ascii_uppercase:
         getAirports(letter)
+
+    # Get data for each node from its page
     for i, node in enumerate(list(G.nodes)):
         print(i, node)
         getAirportInfo(node)
@@ -213,6 +227,7 @@ def main():
             G.nodes[node]["Position"] = (180, 80)
     pos = nx.get_node_attributes(G, 'Position')
 
+    # Draw it. Prettyyyy
     nx.draw(G, pos=pos)
     labels = nx.get_node_attributes(G, 'IATA')
     nx.draw_networkx_labels(G, pos=pos, labels=labels)
