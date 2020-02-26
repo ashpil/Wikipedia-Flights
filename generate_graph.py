@@ -59,7 +59,6 @@ def getAirports(code):
         G.nodes[node]["Location"] = "".join(
             str(item) for item in elements[2].contents)
 
-
     print("Got " + code + " IATA codes")
 
 
@@ -144,6 +143,8 @@ def getAirportInfo(airport):
     soup.find("div").replaceWithChildren()
     for flag in soup.find_all("span", class_="flagicon"):
         flag.extract()
+    for table in soup.find_all("table", class_="stub"):
+        table.extract()
     for h2 in soup.find_all("h2"):
         h2.extract()
     if "This section is empty." in str(soup):
@@ -170,7 +171,12 @@ def getAirportInfo(airport):
 
     for sup in table.find_all('sup'):
         sup.extract()
-
+    if "<th>LOGO" in str(table):
+        for row in table.find_all('tr'):
+            try:
+                row.find_all('td')[0].extract()
+            except IndexError:
+                pass
     for row in table.find_all('tr'):
         element = row.find_all('td')
         if element:
