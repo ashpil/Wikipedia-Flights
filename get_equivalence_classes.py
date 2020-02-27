@@ -1,3 +1,10 @@
+# File: get_equivalence_classes.py
+
+"""
+This module creates a dictionary which holds pairs of Wikipedia page
+titles along with lists of redirect pages that link back to a given page.
+"""
+
 import networkx as nx
 import requests
 import pprint
