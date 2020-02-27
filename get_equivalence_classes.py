@@ -44,7 +44,7 @@ def getRedirects(pages):
 
 
 def getSynonyms(graph, verbose=False):
-        """
+    """
     Return a dictionary of synonyms for each node in the graph
     """
     # create list containing all nodes
