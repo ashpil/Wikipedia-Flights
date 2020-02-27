@@ -198,9 +198,10 @@ def getAirportInfo(airport):
                     if "Airlines" not in G.edges[route]:
                         G.edges[route]["Airlines"] = list()
                     if "</a>" in str(element[0]):
-                        G.edges[route]["Airlines"].append(
-                            element[0].find('a', href=True).contents[0])
-                    else:
+                        if element[0].find('a', href=True).contents[0] not in G.edges[route]["Airlines"]:
+                            G.edges[route]["Airlines"].append(
+                                element[0].find('a', href=True).contents[0])
+                    elif element[0].contents[0] not in G.edges[route]["Airlines"]:
                         G.edges[route]["Airlines"].append(
                             element[0].contents[0])
             except IndexError:

@@ -7,13 +7,9 @@ titles along with lists of redirect pages that link back to a given page.
 
 import networkx as nx
 import requests
-import pprint
 
 API = "https://en.wikipedia.org/w/api.php"
-FILEPATH = "Graphs/Full.gml"
-
 SES = requests.Session()
-G = nx.read_gml(FILEPATH)
 SYNONYM_DICT = dict()
 
 
@@ -40,29 +36,26 @@ def getRedirects(pages):
     data = data["query"]["pages"]
 
     for page in data.keys():
-        # if a page has any redirects, create an entry in SYNONYM_DICT
-        # and store the redirects in a list.
+        # if a page has any redirects, add each redirect as a key
+        # to SYNONYM_DICT with a value of the page.
         if "redirects" in data[page]:
-            SYNONYM_DICT[data[page]["title"]] = list()
             for redirect in data[page]["redirects"]:
-                SYNONYM_DICT[data[page]["title"]].append(redirect["title"])
-
-    return None
+                SYNONYM_DICT[redirect["title"].replace(" ", "_")] = data[page]["title"].replace(" ", "_")
 
 
-def getSynonyms(printProgress=False):
-    """
-    Return a dictionary of synonyms for each node in G
+def getSynonyms(graph, verbose=False):
+        """
+    Return a dictionary of synonyms for each node in the graph
     """
     # create list containing all nodes
-    pages = [node for node in G.nodes]
+    pages = [node for node in graph.nodes]
 
     # loop through all nodes by intervals of 50
     lastcount = 0
     for count in range(50, len(pages), 50):
         # send 50 nodes to getRedirects()
         getRedirects(pages[lastcount:count])
-        if printProgress:
+        if verbose:
             print("DONE " + str(count) + "/" + str(len(pages)))
         # update lastcount for next cycle
         lastcount = count
@@ -70,15 +63,14 @@ def getSynonyms(printProgress=False):
     # send leftover nodes to getRedirects()
     getRedirects(pages[lastcount: lastcount + (len(pages) % 50)])
 
-    if printProgress:
-        # print entire SYNONYM_DICT
+    if verbose:
         print("DONE " + str(len(pages)) + "/" + str(len(pages)))
-        pp = pprint.PrettyPrinter()
-        pp.pprint(SYNONYM_DICT)
 
     # return completed SYNONYM_DICT
     return SYNONYM_DICT
 
 
+
+
 if __name__ == '__main__':
-    getSynonyms(printProgress=True)
+    getSynonyms(nx.read_gml("Graphs/Full.gml"), verbose=True)
