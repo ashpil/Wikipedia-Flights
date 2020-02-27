@@ -34,11 +34,11 @@ def getAirports(code):
 
     # Parse the html
 
-    table = soup.find_all("table")[0]
-    tableContent = table.find_all("tbody")[0]
+    table = soup.find("table")
+    tableContent = table.find("tbody")
     for divider in tableContent.find_all('tr', class_="sortbottom"):
         divider.extract()
-    tableContent.find_all('tr')[0].extract()
+    tableContent.find('tr').extract()
     for row in tableContent.find_all('tr'):
         if "<s>" in str(row):
             row.extract()
@@ -53,14 +53,12 @@ def getAirports(code):
     for row in tableContent.find_all('tr'):
         elements = row.find_all('td')
         name = elements[1].find('a')
-        node = urllib.parse.unquote(name["href"]).replace("/wiki/", "")
+        node = getRedirect(urllib.parse.unquote(name["href"]).replace("/wiki/", ""))
         G.add_node(node)
         G.nodes[node]["IATA"] = elements[0].contents[0]
         G.nodes[node]["Name"] = name.contents[0]
         G.nodes[node]["Location"] = "".join(
             str(item) for item in elements[2].contents)
-
-    print("Got " + code + " IATA codes")
 
 
 # Coords DMS -> DD
@@ -111,12 +109,10 @@ def getAirportInfo(airport):
             index = None
     try:
         if index == None:
-            print("Error: Airport with no destinations!")
-            G.remove_node(airport)
+            print("^ Airport with no destinations! ^")
             return -1
     except UnboundLocalError:
-        print("Error: Airport with no destinations!")
-        G.remove_node(airport)
+        print("^ Airport with no destinations! ^")
         return -1
 
     # Get coordinates and routes
@@ -158,16 +154,14 @@ def getAirportInfo(airport):
     for h2 in soup.find_all("h2"):
         h2.extract()
     if "This section is empty." in str(soup):
-        G.remove_node(airport)
+        print("^ Airport with no destinations! ^")
         return -1
     try:
         if "Cargo" in soup.find().contents[0]:
-            print("Error: Airport with no destinations!")
-            G.remove_node(airport)
+            print("^ Airport with no destinations! ^")
             return -1
     except AttributeError:
-        print("Error: Airport with no destinations!")
-        G.remove_node(airport)
+        print("^ Airport with no destinations! ^")
         return -1
     table = soup.find("table")
     if table != None:
@@ -175,8 +169,7 @@ def getAirportInfo(airport):
             table = soup.find_all("table")[1]
         table = table.find("tbody")
     else:
-        print("Error: Airport with no destinations!")
-        G.remove_node(airport)
+        print("^ Airport with no destinations! ^")
         return -1
 
     for sup in table.find_all('sup'):
@@ -193,7 +186,7 @@ def getAirportInfo(airport):
             try:
                 for a in element[1].find_all('a', href=True):
                     route = tuple(
-                        sorted((urllib.parse.unquote(a["href"]).replace("/wiki/", ""), airport)))
+                        sorted((getRedirect(urllib.parse.unquote(a["href"]).replace("/wiki/", "")), airport)))
                     G.add_edge(*route)
                     if "Airlines" not in G.edges[route]:
                         G.edges[route]["Airlines"] = list()
@@ -210,11 +203,20 @@ def getAirportInfo(airport):
     return
 
 
+def getRedirect(link):
+    r = requests.get("https://en.wikipedia.org/wiki/" + link)
+    soup = BeautifulSoup(r.content, "html.parser")
+    link = soup.find("link", {"rel": "canonical"})
+    airport = link["href"].split("/wiki/")[-1]
+    return airport
+
+
 def main():
 
     # Populate graph from IATA page
     for letter in ascii_uppercase:
         getAirports(letter)
+        print("GOT", letter, "IATA CODES")
 
     # Get data for each node from its page
     for i, node in enumerate(list(G.nodes)):
@@ -232,7 +234,7 @@ def main():
     nx.draw(G, pos=pos)
     labels = nx.get_node_attributes(G, 'IATA')
     nx.draw_networkx_labels(G, pos=pos, labels=labels)
-    nx.write_gml(G, "Graphs/Full.gml")
+    nx.write_gml(G, "Graphs/FullNoRedirects.gml")
     plt.show()
 
 
