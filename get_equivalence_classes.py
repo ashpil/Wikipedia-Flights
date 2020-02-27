@@ -1,8 +1,6 @@
 import networkx as nx
 import requests
-import pprint
 
-G = nx.read_gml("Graphs/Full.gml")
 API = "https://en.wikipedia.org/w/api.php"
 SES = requests.Session()
 synonymDict = dict()
@@ -21,26 +19,23 @@ def getRedirects(pages):
     data = data["query"]["pages"]
     for page in data.keys():
         if "redirects" in data[page]:
-            synonymDict[data[page]["title"]] = list()
             for redirect in data[page]["redirects"]:
-                synonymDict[data[page]["title"]].append(redirect["title"])
+                synonymDict[redirect["title"].replace(" ", "_")] = data[page]["title"].replace(" ", "_")
 
 
-def getSynonyms(printProgress=False):
-    pages = [node for node in G.nodes]
+def getSynonyms(graph, verbose=False):
+    pages = [node for node in graph.nodes]
     lastcount = 0
     for count in range(50, len(pages), 50):
         getRedirects(pages[lastcount:count])
-        if printProgress:
+        if verbose:
             print("DONE " + str(count) + "/" + str(len(pages)))
         lastcount = count
     getRedirects(pages[lastcount: lastcount + (len(pages) % 50)])
-    if printProgress:
+    if verbose:
         print("DONE " + str(len(pages)) + "/" + str(len(pages)))
-        pp = pprint.PrettyPrinter()
-        pp.pprint(synonymDict)
 
     return synonymDict
 
 if __name__ == '__main__':
-    getSynonyms(printProgress=True)
+    getSynonyms(nx.read_gml("Graphs/Full.gml"), verbose=True)
