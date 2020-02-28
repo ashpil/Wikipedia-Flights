@@ -53,7 +53,7 @@ def getAirports(code):
     for row in tableContent.find_all('tr'):
         elements = row.find_all('td')
         name = elements[1].find('a')
-        node = getRedirect(urllib.parse.unquote(name["href"]).replace("/wiki/", ""))
+        node = urllib.parse.unquote(getRedirect(name["href"].replace("/wiki/", "")))
         G.add_node(node)
         G.nodes[node]["IATA"] = elements[0].contents[0]
         G.nodes[node]["Name"] = name.contents[0]
@@ -186,7 +186,7 @@ def getAirportInfo(airport):
             try:
                 for a in element[1].find_all('a', href=True):
                     route = tuple(
-                        sorted((getRedirect(urllib.parse.unquote(a["href"]).replace("/wiki/", "")), airport)))
+                        sorted((urllib.parse.unquote(getRedirect(a["href"].replace("/wiki/", ""))), airport)))
                     G.add_edge(*route)
                     if "Airlines" not in G.edges[route]:
                         G.edges[route]["Airlines"] = list()
@@ -234,7 +234,7 @@ def main():
     nx.draw(G, pos=pos)
     labels = nx.get_node_attributes(G, 'IATA')
     nx.draw_networkx_labels(G, pos=pos, labels=labels)
-    nx.write_gml(G, "Graphs/FullNoRedirects.gml")
+    nx.write_gml(G, "Graphs/FullNoRedirects2.gml")
     plt.show()
 
 
