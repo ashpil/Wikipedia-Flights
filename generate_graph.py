@@ -110,10 +110,8 @@ def getAirportInfo(airport):
     try:
         if index == None:
             print("^ Airport with no destinations! ^")
-            return -1
     except UnboundLocalError:
         print("^ Airport with no destinations! ^")
-        return -1
 
     # Get coordinates and routes
     params = {
@@ -185,8 +183,7 @@ def getAirportInfo(airport):
         if element:
             try:
                 for a in element[1].find_all('a', href=True):
-                    route = tuple(
-                        sorted((urllib.parse.unquote(getRedirect(a["href"].replace("/wiki/", ""))), airport)))
+                    route = tuple((urllib.parse.unquote(getRedirect(a["href"].replace("/wiki/", ""))), airport))
                     G.add_edge(*route)
                     if "Airlines" not in G.edges[route]:
                         G.edges[route]["Airlines"] = list()
