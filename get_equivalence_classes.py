@@ -41,6 +41,7 @@ def getRedirects(pages):
         if "redirects" in data[page]:
             for redirect in data[page]["redirects"]:
                 SYNONYM_DICT[redirect["title"].replace(" ", "_")] = data[page]["title"].replace(" ", "_")
+                SYNONYM_DICT[data[page]["title"].replace(" ", "_")] = data[page]["title"].replace(" ", "_")
 
 
 def getSynonyms(graph, verbose=False):

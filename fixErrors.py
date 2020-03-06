@@ -45,7 +45,7 @@ def removeHeliports(G, verbose=False):
     if verbose:
         print("\033[31mREMOVED", count, "HELIPORTS\033[0m")
 
-def main(G=nx.read_gml("Graphs/FullNoRedirects2.gml")):
+def main(G=nx.read_gml("Graphs/FullUnfiltered.gml")):
     findAirpotsWithNoDestinations(G, True)
     removeHeliports(G, True)
     removeNonValidAirports(G, True)
@@ -55,7 +55,7 @@ def main(G=nx.read_gml("Graphs/FullNoRedirects2.gml")):
     nx.draw(G, pos=pos)
     labels = nx.get_node_attributes(G, 'IATA')
     nx.draw_networkx_labels(G, pos=pos, labels=labels)
-    nx.write_gml(G, "Graphs/FullNoRedirectsRemovedWrong&Heliports&NoDest.gml")
+    nx.write_gml(G, "Graphs/FullFiltered.gml")
     plt.show()
 
 if __name__ == "__main__":

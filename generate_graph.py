@@ -6,13 +6,17 @@ import urllib
 import matplotlib.pylab as plt
 import wptools
 from string import ascii_uppercase
+from get_equivalence_classes import getSynonyms
+import time
 
 API = "https://en.wikipedia.org/w/api.php"
 SES = requests.Session()
 G = nx.Graph()
-
+SYNONYM_DICT = dict()
 
 # Code to parse IATA page tables and put those into graph as nodes with attributes
+
+
 def getAirports(code):
     params = {
         "action": "query",
@@ -53,15 +57,17 @@ def getAirports(code):
     for row in tableContent.find_all('tr'):
         elements = row.find_all('td')
         name = elements[1].find('a')
-        node = urllib.parse.unquote(getRedirect(name["href"].replace("/wiki/", "")))
+        node = urllib.parse.unquote(getRedirect(
+            name["href"].replace("/wiki/", "")))
         G.add_node(node)
         G.nodes[node]["IATA"] = elements[0].contents[0]
         G.nodes[node]["Name"] = name.contents[0]
         G.nodes[node]["Location"] = "".join(
             str(item) for item in elements[2].contents)
 
-
 # Coords DMS -> DD
+
+
 def parseCoords(coords):
     coords = coords.split("|")
     newCoords = list()
@@ -70,15 +76,30 @@ def parseCoords(coords):
         if i == "W" or i == "E":
             break
     coords = newCoords
-    lat = dms2dd(coords[0], coords[1], coords[2], coords[3])
-    lon = dms2dd(coords[4], coords[5], coords[6], coords[7])
+    try:
+        lat = dms2dd(coords[0], coords[1], coords[2], coords[3])
+        lon = dms2dd(coords[4], coords[5], coords[6], coords[7])
+    except IndexError:
+        lat = dms2dd(coords[0], 0, "bad", "bad")
+        lon = dms2dd(coords[1], 0, "bad", "bad")
     return (lon, lat)
 
 
 def dms2dd(degs, mins, secs, dir):
-    dd = float(degs) + (float(mins) / 60) + (float(secs)/3600)
-    if dir == 'W' or dir == 'S':
-        dd *= -1
+    try:
+        dd = float(degs) + (float(mins) / 60) + (float(secs)/3600)
+        if dir == 'W' or dir == 'S':
+            dd *= -1
+    except ValueError:
+        print("PAGE USING DEPRICATED COORD SYSTEM")
+        try:
+            dd = float(degs) + (float(mins) / 60)
+            if (secs == 'W' or secs == 'S'):
+                dd *= -1
+        except ValueError:
+            dd = float(degs)
+            if (mins == 'W' or mins == 'S'):
+                dd *= -1
     return dd
 
 
@@ -101,16 +122,12 @@ def getAirportInfo(airport):
 
     # Basically this is tons of if statements to check for certain exceptions
     # and do proper thing if they occur. There's likely a better way to do this
+    index = 0
     for section in data["parse"]["sections"]:
         if section["anchor"] == "Airlines_and_destinations":
             index = section["index"]
             break
-        else:
-            index = None
-    try:
-        if index == None:
-            print("^ Airport with no destinations! ^")
-    except UnboundLocalError:
+    if index == 0:
         print("^ Airport with no destinations! ^")
 
     # Get coordinates and routes
@@ -136,11 +153,14 @@ def getAirportInfo(airport):
             page = wptools.page(airport, silent=True).get_parse()
             G.nodes[airport]["Position"] = parseCoords(
                 page.data["infobox"]["coordinates"])
-        except KeyError:
+        except (KeyError, TypeError):
             print("Error! No coordinates for this page!")
+    
+    if index == 0:
+        return
+
     data = data["query"]["pages"][list(data["query"]["pages"])[
         0]]["revisions"][0]["*"]
-
     # Uses BeautifulSoup html parser to remove unneeded elements
     soup = BeautifulSoup(data, "html.parser")
     soup.encode("utf-8")
@@ -183,7 +203,8 @@ def getAirportInfo(airport):
         if element:
             try:
                 for a in element[1].find_all('a', href=True):
-                    route = tuple((urllib.parse.unquote(getRedirect(a["href"].replace("/wiki/", ""))), airport))
+                    route = tuple((urllib.parse.unquote(getRedirect(
+                        a["href"].replace("/wiki/", ""))), airport))
                     G.add_edge(*route)
                     if "Airlines" not in G.edges[route]:
                         G.edges[route]["Airlines"] = list()
@@ -201,25 +222,36 @@ def getAirportInfo(airport):
 
 
 def getRedirect(link):
-    r = requests.get("https://en.wikipedia.org/wiki/" + link)
-    soup = BeautifulSoup(r.content, "html.parser")
-    link = soup.find("link", {"rel": "canonical"})
-    airport = link["href"].split("/wiki/")[-1]
-    return airport
+    if link in SYNONYM_DICT:
+        print("Got synonym from dict!")
+        return SYNONYM_DICT[link]
+    else:
+        print("New synonym for", link)
+        r = requests.get("https://en.wikipedia.org/wiki/" + link)
+        soup = BeautifulSoup(r.content, "html.parser")
+        newLink = soup.find("link", {"rel": "canonical"})
+        airport = newLink["href"].split("/wiki/")[-1]
+        SYNONYM_DICT[link] = airport
+        return airport
 
 
 def main():
-
     # Populate graph from IATA page
+    start = time.time()
     for letter in ascii_uppercase:
+        letterTime = time.time()
         getAirports(letter)
-        print("GOT", letter, "IATA CODES")
+        print("GOT", letter, "IATA CODES IN", time.time() - letterTime, "SECONDS")
 
+    print("GOT ALL CODES IN", time.time() - start, "SECONDS")
+    SYNONYM_DICT.update(getSynonyms(G, verbose=True))
+    print("GOT SYNONYMS IN", time.time() - start, "SECONDS")
     # Get data for each node from its page
     for i, node in enumerate(list(G.nodes)):
         print(i, node)
         getAirportInfo(node)
 
+    print("GOT AIRPORTS/CONNECTIONS IN", time.time() - start, "SECONDS")
     for node in G.nodes:
         if "Position" in G.nodes[node]:
             continue
@@ -231,9 +263,9 @@ def main():
     nx.draw(G, pos=pos)
     labels = nx.get_node_attributes(G, 'IATA')
     nx.draw_networkx_labels(G, pos=pos, labels=labels)
-    nx.write_gml(G, "Graphs/FullNoRedirects2.gml")
+    nx.write_gml(G, "Graphs/FullUnfiltered.gml")
+    print("FULL TIME ELAPSED:", time.time() - start, "SECONDS")
     plt.show()
-
 
 if __name__ == '__main__':
     main()
