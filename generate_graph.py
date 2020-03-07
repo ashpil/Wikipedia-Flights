@@ -4,7 +4,6 @@ import wptools
 import time
 import datetime
 import networkx as nx
-import matplotlib.pylab as plt
 from bs4 import BeautifulSoup
 from string import ascii_uppercase
 from get_equivalence_classes import getSynonyms
