@@ -1,23 +1,21 @@
 import requests
-from bs4 import BeautifulSoup
-import random
-import networkx as nx
 import urllib
-import matplotlib.pylab as plt
 import wptools
+import time
+import datetime
+import networkx as nx
+import matplotlib.pylab as plt
+from bs4 import BeautifulSoup
 from string import ascii_uppercase
 from get_equivalence_classes import getSynonyms
-import time
 
 API = "https://en.wikipedia.org/w/api.php"
 SES = requests.Session()
-G = nx.Graph()
 SYNONYM_DICT = dict()
 
+
 # Code to parse IATA page tables and put those into graph as nodes with attributes
-
-
-def getAirports(code):
+def getAirports(G, code):
     params = {
         "action": "query",
         "prop": "revisions",
@@ -28,21 +26,19 @@ def getAirports(code):
         "rvlimit": 1
     }
 
-    res = SES.get(url=API, params=params)
-    data = res.json()
-    data = data["query"]["pages"][list(data["query"]["pages"])[
-        0]]["revisions"][0]["*"]
+    data = SES.get(url=API, params=params).json()
+    data = list(data["query"]["pages"].values())[0]["revisions"][0]["*"]
 
-    # Uses BeautifulSoup html parser to remove unneeded elements
+    # Uses BeautifulSoup html parser to remove unneeded elements/parse HTML
     soup = BeautifulSoup(data, "html.parser")
+    tableContent = soup.find("table").find("tbody")
 
-    # Parse the html
-
-    table = soup.find("table")
-    tableContent = table.find("tbody")
+    # Strip extra stuff from table that gets in the way
     for divider in tableContent.find_all('tr', class_="sortbottom"):
         divider.extract()
     tableContent.find('tr').extract()
+
+    # Format each table element to be easier to parse
     for row in tableContent.find_all('tr'):
         if "<s>" in str(row):
             row.extract()
@@ -54,6 +50,8 @@ def getAirports(code):
             elif i == 3:
                 for a in element.find_all('a'):
                     a.replaceWithChildren()
+
+    # Go through table, adding each entry to our graph
     for row in tableContent.find_all('tr'):
         elements = row.find_all('td')
         name = elements[1].find('a')
@@ -65,9 +63,118 @@ def getAirports(code):
         G.nodes[node]["Location"] = "".join(
             str(item) for item in elements[2].contents)
 
+
+# Gets info for given airport and populates its nodes attributes and edges
+def getAirportInfo(G, airport):
+    # Basically this is tons of if statements to check for certain exceptions
+    # and do proper thing if they occur. There's likely a better way to do this
+
+    # Get section of routes
+    params = {
+        "action": "parse",
+        "prop": "sections",
+        "format": "json",
+        "page": airport,
+        "redirects": 1
+    }
+
+    data = SES.get(url=API, params=params).json()
+
+    index = 0
+    for section in data["parse"]["sections"]:
+        if section["anchor"] == "Airlines_and_destinations":
+            index = section["index"]
+            break
+
+    # Get coordinates and routes
+    params = {
+        "action": "query",
+        "prop": "revisions|coordinates",
+        "format": "json",
+        "titles": airport,
+        "rvprop": "content",
+        "rvparse": True,
+        "rvlimit": 1,
+        "rvsection": index,
+        "redirects": 1
+    }
+
+    data = SES.get(url=API, params=params).json()
+    data = list(data["query"]["pages"].values())[0]
+    # All coord stuff happens here
+    try:
+        G.nodes[airport]["Position"] = (data["coordinates"][0]["lon"], data["coordinates"][0]["lat"])
+    except KeyError:
+        try:
+            page = wptools.page(airport, silent=True).get_parse()
+            G.nodes[airport]["Position"] = parseCoords(
+                page.data["infobox"]["coordinates"])
+        except (KeyError, TypeError):
+            G.nodes[airport]["Position"] = (180, 80)
+
+    if index == 0:
+        return
+
+    # Uses BeautifulSoup html parser to remove unneeded elements
+    data = data["revisions"][0]["*"]
+    soup = BeautifulSoup(data, "html.parser")
+    soup.encode("utf-8")
+    soup.find("div").replaceWithChildren()
+    for flag in soup.find_all("span", class_="flagicon"):
+        flag.extract()
+    for table in soup.find_all("table", class_="stub"):
+        table.extract()
+    for h2 in soup.find_all("h2"):
+        h2.extract()
+    if "This section is empty." in str(soup):
+        return -1
+    try:
+        if "Cargo" in soup.find().contents[0]:
+            return -1
+    except AttributeError:
+        return -1
+    table = soup.find("table")
+    if table != None:
+        if "box-More_citations_needed_section" in table["class"] or "box-Unreferenced_section" in table["class"] or "box-More_citations_needed" in table["class"]:
+            table = soup.find_all("table")[1]
+        table = table.find("tbody")
+    else:
+        return -1
+
+    for sup in table.find_all('sup'):
+        sup.extract()
+    if "<th>LOGO" in str(table):
+        for row in table.find_all('tr'):
+            try:
+                row.find_all('td')[0].extract()
+            except IndexError:
+                pass
+
+    # Add cleaned up data to node
+    for row in table.find_all('tr'):
+        element = row.find_all('td')
+        if element:
+            try:
+                for a in element[1].find_all('a', href=True):
+                    route = tuple((urllib.parse.unquote(getRedirect(
+                        a["href"].replace("/wiki/", ""))), airport))
+                    G.add_edge(*route)
+                    if "Airlines" not in G.edges[route]:
+                        G.edges[route]["Airlines"] = list()
+                    if "</a>" in str(element[0]):
+                        if element[0].find('a', href=True).contents[0] not in G.edges[route]["Airlines"]:
+                            G.edges[route]["Airlines"].append(
+                                element[0].find('a', href=True).contents[0])
+                    elif element[0].contents[0] not in G.edges[route]["Airlines"]:
+                        G.edges[route]["Airlines"].append(
+                            element[0].contents[0])
+            except IndexError:
+                break
+
+    return
+
+
 # Coords DMS -> DD
-
-
 def parseCoords(coords):
     coords = coords.split("|")
     newCoords = list()
@@ -103,130 +210,11 @@ def dms2dd(degs, mins, secs, dir):
     return dd
 
 
-# Gets info for given airport and populates its nodes attributes and edges
-def getAirportInfo(airport):
-
-    airport = airport.replace(" ", "_")\
-
-    # Get section of routes
-    params = {
-        "action": "parse",
-        "prop": "sections",
-        "format": "json",
-        "page": airport,
-        "redirects": 1
-    }
-
-    res = SES.get(url=API, params=params)
-    data = res.json()
-
-    # Basically this is tons of if statements to check for certain exceptions
-    # and do proper thing if they occur. There's likely a better way to do this
-    index = 0
-    for section in data["parse"]["sections"]:
-        if section["anchor"] == "Airlines_and_destinations":
-            index = section["index"]
-            break
-    if index == 0:
-        print("^ Airport with no destinations! ^")
-
-    # Get coordinates and routes
-    params = {
-        "action": "query",
-        "prop": "revisions|coordinates",
-        "format": "json",
-        "titles": airport,
-        "rvprop": "content",
-        "rvparse": True,
-        "rvlimit": 1,
-        "rvsection": index,
-        "redirects": 1
-    }
-
-    res = SES.get(url=API, params=params)
-    data = res.json()
-    try:
-        G.nodes[airport]["Position"] = (data["query"]["pages"][list(data["query"]["pages"])[
-                                        0]]["coordinates"][0]["lon"], data["query"]["pages"][list(data["query"]["pages"])[0]]["coordinates"][0]["lat"])
-    except KeyError:
-        try:
-            page = wptools.page(airport, silent=True).get_parse()
-            G.nodes[airport]["Position"] = parseCoords(
-                page.data["infobox"]["coordinates"])
-        except (KeyError, TypeError):
-            print("Error! No coordinates for this page!")
-    
-    if index == 0:
-        return
-
-    data = data["query"]["pages"][list(data["query"]["pages"])[
-        0]]["revisions"][0]["*"]
-    # Uses BeautifulSoup html parser to remove unneeded elements
-    soup = BeautifulSoup(data, "html.parser")
-    soup.encode("utf-8")
-    soup.find("div").replaceWithChildren()
-    for flag in soup.find_all("span", class_="flagicon"):
-        flag.extract()
-    for table in soup.find_all("table", class_="stub"):
-        table.extract()
-    for h2 in soup.find_all("h2"):
-        h2.extract()
-    if "This section is empty." in str(soup):
-        print("^ Airport with no destinations! ^")
-        return -1
-    try:
-        if "Cargo" in soup.find().contents[0]:
-            print("^ Airport with no destinations! ^")
-            return -1
-    except AttributeError:
-        print("^ Airport with no destinations! ^")
-        return -1
-    table = soup.find("table")
-    if table != None:
-        if "box-More_citations_needed_section" in table["class"] or "box-Unreferenced_section" in table["class"] or "box-More_citations_needed" in table["class"]:
-            table = soup.find_all("table")[1]
-        table = table.find("tbody")
-    else:
-        print("^ Airport with no destinations! ^")
-        return -1
-
-    for sup in table.find_all('sup'):
-        sup.extract()
-    if "<th>LOGO" in str(table):
-        for row in table.find_all('tr'):
-            try:
-                row.find_all('td')[0].extract()
-            except IndexError:
-                pass
-    for row in table.find_all('tr'):
-        element = row.find_all('td')
-        if element:
-            try:
-                for a in element[1].find_all('a', href=True):
-                    route = tuple((urllib.parse.unquote(getRedirect(
-                        a["href"].replace("/wiki/", ""))), airport))
-                    G.add_edge(*route)
-                    if "Airlines" not in G.edges[route]:
-                        G.edges[route]["Airlines"] = list()
-                    if "</a>" in str(element[0]):
-                        if element[0].find('a', href=True).contents[0] not in G.edges[route]["Airlines"]:
-                            G.edges[route]["Airlines"].append(
-                                element[0].find('a', href=True).contents[0])
-                    elif element[0].contents[0] not in G.edges[route]["Airlines"]:
-                        G.edges[route]["Airlines"].append(
-                            element[0].contents[0])
-            except IndexError:
-                break
-
-    return
-
-
+# Gets redirect if not in dict, stores known ones in dict to decrease request calls
 def getRedirect(link):
     if link in SYNONYM_DICT:
-        print("Got synonym from dict!")
         return SYNONYM_DICT[link]
     else:
-        print("New synonym for", link)
         r = requests.get("https://en.wikipedia.org/wiki/" + link)
         soup = BeautifulSoup(r.content, "html.parser")
         newLink = soup.find("link", {"rel": "canonical"})
@@ -235,37 +223,45 @@ def getRedirect(link):
         return airport
 
 
-def main():
+def generateGraph(name, verbose=False):
+    G = nx.Graph()
+
     # Populate graph from IATA page
-    start = time.time()
-    for letter in ascii_uppercase:
-        letterTime = time.time()
-        getAirports(letter)
-        print("GOT", letter, "IATA CODES IN", time.time() - letterTime, "SECONDS")
+    if verbose:
+        start = time.time()
+    for letter in ascii_uppercase[0:1]:
+        if verbose:
+            letterTime = time.time()
+        getAirports(G, letter)
+        if verbose:
+            print("GOT", letter, "IATA CODES IN", datetime.timedelta(
+            seconds=time.time() - letterTime))
+    if verbose:
+        print("GOT ALL CODES IN", datetime.timedelta(seconds=time.time() - start))
 
-    print("GOT ALL CODES IN", time.time() - start, "SECONDS")
-    SYNONYM_DICT.update(getSynonyms(G, verbose=True))
-    print("GOT SYNONYMS IN", time.time() - start, "SECONDS")
+    # Gets redirects all at once to speed things up
+    if verbose:
+        timeTemp = time.time()
+    SYNONYM_DICT.update(getSynonyms(G, verbose=verbose))
+    if verbose:
+        print("GOT SYNONYMS IN", datetime.timedelta(seconds=time.time() - timeTemp))
+
     # Get data for each node from its page
+    if verbose:
+        timeTemp = time.time()
     for i, node in enumerate(list(G.nodes)):
-        print(i, node)
-        getAirportInfo(node)
+        if verbose:
+            print(i, node)
+        getAirportInfo(G, node)
+    if verbose:
+        print("GOT AIRPORTS/CONNECTIONS IN",
+          datetime.timedelta(seconds=time.time() - timeTemp))
 
-    print("GOT AIRPORTS/CONNECTIONS IN", time.time() - start, "SECONDS")
-    for node in G.nodes:
-        if "Position" in G.nodes[node]:
-            continue
-        else:
-            G.nodes[node]["Position"] = (180, 80)
-    pos = nx.get_node_attributes(G, 'Position')
+    nx.write_gml(G, "Graphs/" + name + ".gml")
+    if verbose:
+        print("FULL TIME ELAPSED:", datetime.timedelta(seconds=time.time() - start))
+        print("DONE")
 
-    # Draw it. Prettyyyy
-    nx.draw(G, pos=pos)
-    labels = nx.get_node_attributes(G, 'IATA')
-    nx.draw_networkx_labels(G, pos=pos, labels=labels)
-    nx.write_gml(G, "Graphs/FullUnfiltered.gml")
-    print("FULL TIME ELAPSED:", time.time() - start, "SECONDS")
-    plt.show()
 
 if __name__ == '__main__':
-    main()
+    generateGraph("Full", verbose=True)

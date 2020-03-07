@@ -1,9 +1,7 @@
 # File: get_equivalence_classes.py
 
-"""
-This module creates a dictionary which holds pairs of Wikipedia page
-titles along with lists of redirect pages that link back to a given page.
-"""
+# This module creates a dictionary which holds pairs of Wikipedia page
+# titles along with lists of redirect pages that link back to a given page.
 
 import networkx as nx
 import requests
@@ -14,13 +12,13 @@ SYNONYM_DICT = dict()
 
 
 def getRedirects(pages):
-    """
-    For all page names in pages with at least one redirect, create a
-    dictionary entry in SYNONYM_DICT with a key-value pair of the page
-    title and list containing all known redirects.
+    
+    # For all page names in pages with at least one redirect, create a
+    # dictionary entry in SYNONYM_DICT with a key-value pair of the page
+    # title and list containing all known redirects.
 
-    Format: { title : [redirects], title : [redirects] }
-    """
+    # Format: { title : [redirects], title : [redirects] }
+    
     params = {
         "action": "query",
         "prop": "redirects",
@@ -69,9 +67,6 @@ def getSynonyms(graph, verbose=False):
 
     # return completed SYNONYM_DICT
     return SYNONYM_DICT
-
-
-
 
 if __name__ == '__main__':
     getSynonyms(nx.read_gml("Graphs/Full.gml"), verbose=True)

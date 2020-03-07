@@ -45,6 +45,12 @@ def removeHeliports(G, verbose=False):
     if verbose:
         print("\033[31mREMOVED", count, "HELIPORTS\033[0m")
 
+def removeInvalidPositions(G, verbose=False):
+    for i, node in enumerate(list(G.nodes(data=True))):
+        if node[1]["Position"] == [180, 80]:
+            if verbose:
+                print(i, node[0], len(G.edges(node[0])))
+            G.remove_node(node[0])
 def main(G=nx.read_gml("Graphs/FullUnfiltered.gml")):
     findAirpotsWithNoDestinations(G, True)
     removeHeliports(G, True)
