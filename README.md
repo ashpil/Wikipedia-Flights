@@ -42,9 +42,7 @@ The route with least distance travelled (10975km) is:
 
 ---
 
-Generally, the further the locations are, the less optimal routes there are.
-
-For example: running `getConnectionRundown("San_Francisco_International_Airport", "Ivato_International_Airport")` would get you:
+Generally, the further the locations are, the less optimal routes there are. For example: running `getConnectionRundown("San_Francisco_International_Airport", "Ivato_International_Airport")` would get you:
 
 ```
 There are 3 routes with least layovers from San Francisco to Antananarivo:
@@ -60,7 +58,7 @@ The least distance travelled route is often more layovers than the optimal ones.
 
 ## TODO
 
-- Create web interface, that would allow:
+- Create web interface, which would allow:
     - Easier exploration of graph
     - Streamlined path searching/other fun stuff
     - And all download-free!
